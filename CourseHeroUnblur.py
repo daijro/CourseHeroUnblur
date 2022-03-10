@@ -350,7 +350,7 @@ with open(PDF_FILE_NAME, "wb") as pdf_file_handle:
 if USE_OCR:
     try:
         print(f"\n{log_indic} {Fore.CYAN}Running OCR...{Fore.RESET}")
-        ocrmypdf.ocr(PDF_FILE_NAME, PDF_FILE_NAME, deskew=True, use_threads=True)
+        ocrmypdf.ocr(PDF_FILE_NAME, PDF_FILE_NAME, use_threads=True)
     except FileNotFoundError:
         print(f"{err_indic} {Fore.RED}OCR failed. Please make sure Ghostscript and Tesseract-OCR are installed.{Fore.RESET}")
 
