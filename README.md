@@ -13,7 +13,7 @@ This tool gathers all the avaliable previews of a document in CourseHero, then u
 
 ## In Action
 
-![in action](https://i.imgur.com/ekBma2W.mp4)
+https://user-images.githubusercontent.com/72637910/157621460-10ab458a-74f2-4334-9312-c63462742bdb.mp4
 
 
 <hr width=50>
