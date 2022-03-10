@@ -1,41 +1,15 @@
-import grequests
-from skimage.metrics import structural_similarity
-import numpy as np
-import re
-from fake_headers import Headers
-from requests_html import HTMLSession
-import argparse
-import cv2
 import sys
-from pathlib import Path
-from skimage.io._plugins.pil_plugin import ndarray_to_pil
-from threading import Thread
-from bs4 import BeautifulSoup as bs
-from eta import ETA
 
-from borb.pdf.canvas.layout.image.image import Image as Image
-from borb.pdf.canvas.layout.page_layout.multi_column_layout import SingleColumnLayout
-from borb.pdf.document.document import Document
-from borb.pdf.page.page import Page
-from borb.pdf.pdf import PDF
-import ocrmypdf
-import webbrowser
-
-from blessed import Terminal
-from colorama import Fore, init
-Terminal()
-init()
-
-
+# default values
 IMAGE_UPSCALING  = False
 USE_OCR          = True
 OPEN_FILE        = False
 PDF_FILE_NAME    = None
+url              = None
 
-log_indic = f"{Fore.RESET}[{Fore.CYAN}>{Fore.RESET}]"
-err_indic = f"{Fore.RESET}[{Fore.RED}>{Fore.RESET}]"
-
+# argument parser
 if len(sys.argv) > 1:
+    import argparse
     parser = argparse.ArgumentParser(description='Bypass the coursehero paywall')
     parser.add_argument('-l', '--url', help='The coursehero url to bypass', required=True)
     parser.add_argument('-o', '--output', help='Output file (default file name from CourseHero)', required=False)
@@ -49,28 +23,74 @@ if len(sys.argv) > 1:
     OPEN_FILE = args.open
     USE_OCR = not args.no_ocr
     PDF_FILE_NAME = args.output
-else:
+    
+# other imports
+import grequests
+from skimage.metrics import structural_similarity
+import numpy as np
+import re
+from fake_headers import Headers
+from requests_html import HTMLSession
+import cv2
+from pathlib import Path
+from skimage.io._plugins.pil_plugin import ndarray_to_pil
+from threading import Thread
+from bs4 import BeautifulSoup as bs
+from eta import ETA
+
+from borb.pdf.canvas.layout.image.image import Image as Image
+from borb.pdf.canvas.layout.page_layout.multi_column_layout import SingleColumnLayout
+from borb.pdf.document.document import Document
+from borb.pdf.page.page import Page
+from borb.pdf.pdf import PDF
+
+# optional imports
+if USE_OCR:
+    import ocrmypdf
+if OPEN_FILE:
+    import webbrowser
+
+from blessed import Terminal
+from colorama import Fore, init
+Terminal()
+init()
+
+
+log_indic = f"{Fore.RESET}[{Fore.CYAN}>{Fore.RESET}]"
+err_indic = f"{Fore.RESET}[{Fore.RED}>{Fore.RESET}]"
+
+# prompt for url if not given
+if not url:
     try:
         url = input(f"{log_indic} Enter the coursehero url: ").strip()
     except KeyboardInterrupt:
         print(f"{err_indic} Exiting...")
         exit()
 
+# input validation
 if 'coursehero.com/file' not in url.lower():
-    print(f"{err_indic} Invalid url. Exiting...")
+    print(f"{err_indic} {Fore.RED}Invalid url. Exiting...{Fore.RESET}")
     exit()
 
 
 make_headers = lambda: {key:value for key, value in Headers(headers=True).generate().items() if key != 'Accept-Encoding'}
 
 session = HTMLSession()
-resp = session.get(url, headers=make_headers())
+
+try:
+    resp = session.get(url, headers=make_headers())
+except:
+    print(f"{err_indic} {Fore.RED}Request connection failed. Exiting...{Fore.RESET}")
+    exit()
 
 
 try:
     pot_url = re.findall('url\\(\\/doc-asset\\/bg[\\/a-z0-9\\.\\-]+\\);', resp.text)[0][4:-2]
+except IndexError:
+    print(Fore.RED+bs(resp.text, features='lxml').get_text()+Fore.RESET)
+    exit()
 except:
-    print(resp.text)
+    print(f"{err_indic} {Fore.RED}Failed to parse request content. Exiting...{Fore.RESET}")
     exit()
 
 soup = bs(resp.content, features='lxml')
@@ -174,7 +194,7 @@ def getBlurredPages(page):
                 break
         else:
             fullBlurredPages.append(f'{blurredPages[-1][:-4]}-html-bg{blurredPages[-1][-4:]}')
-            eta.print_status(extra='          ')
+            eta.print_status(extra=f'Finished page #{page}\t')
         generatedPageList.extend(blurredPages)
 
 full_page_threads = []
@@ -285,7 +305,7 @@ def stitch_page(n, page_url):
         new_img.paste(ndarray_to_pil(after).convert('RGB'), (0, 0), ndarray_to_pil(mask).convert('L'))
     
     imgs[n] = new_img
-    eta.print_status(extra='          ')
+    eta.print_status(extra=f"Finished page #{n}\t")
 
 
 threads = []
