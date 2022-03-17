@@ -36,7 +36,7 @@ import webbrowser
 
 try:
     # phase 1: gather website details
-    log_info("Getting inital page details...")
+    log_info("Getting initial page details...")
     phase1 = scraper.PHASE1(URL, PDF_FILE_NAME)
     phase1.run()
 
