@@ -9,8 +9,9 @@ parser.add_argument('-l', '--url', help='The coursehero url to bypass', required
 parser.add_argument('-o', '--output', help='Output file (default file name from CourseHero)', required=False)
 parser.add_argument('-n', '--no-ocr', help='Don\'t scan PDF with OCR, won\'t break without GhostScript and Tesseract', default=False, action='store_true')
 parser.add_argument('-s', '--sharpen', help='Sharpens the image for better OCR output (makes images grayscale)', default=False, action='store_true')
+parser.add_argument('-p', '--pages', help='Specify a page range (example: 1,2,3-5)', default=None)
 parser.add_argument('--open', help='Opens the PDF in the default web browser', default=False, action='store_true')
-parser.add_argument('--debug', help='Show traceback log', default=False, action='store_true')
+parser.add_argument('--debug', help='Show error traceback', default=False, action='store_true')
 args = parser.parse_args()
 
 URL              = args.url
@@ -19,6 +20,7 @@ OPEN_FILE        = args.open
 USE_OCR          = not args.no_ocr
 PDF_FILE_NAME    = args.output
 DEBUG            = args.debug
+PAGE_RANGE       = args.pages
 
 
 print(f"{Back.RED}CourseHeroUnblur CLI - by daijro{Back.RESET}")
@@ -55,28 +57,31 @@ try:
         linkPath        = phase1.linkPath,
         pageAmount      = phase1.pageAmount,
         IMAGE_UPSCALING = IMAGE_UPSCALING,
+        PAGE_RANGE      = PAGE_RANGE,
+        DEBUG           = DEBUG
     )
     print(Fore.LIGHTBLACK_EX, end="")
     phase2.run(print_eta=True)
     
     # phase 3: write to pdf & ocr
-    log_info("Writing to PDF...")
+    log_info(f"Writing {'& scanning' if USE_OCR else ''} PDF...")
     phase3 = scraper.PHASE3(
         pdf_file_name = phase1.pdf_file_name,
         USE_OCR       = USE_OCR,
         imgs          = phase2.imgs,
     )
     print(Fore.LIGHTBLACK_EX, end="")
-    phase3.run()
+    phase3.run(debug=DEBUG)
     
     # open pdf
     if OPEN_FILE:
         log_info("Opening PDF...")
         webbrowser.open(f"file:///{phase1.pdf_file_name}")
+        
+    print(f"\n{Fore.RESET}[{Fore.GREEN}>{Fore.RESET}]" + f" {Fore.GREEN}Complete!{Fore.RESET}")
 
 except Exception as e:
     if DEBUG:
-        # sourcery skip: raise-from-previous-error
         raise e
     print(f"{err_indic} {Fore.RED}{str(e).strip()}\n"
         f"    For more details, run with --debug{Fore.RESET}")

@@ -8,16 +8,12 @@ import cv2
 from pathlib import Path
 from skimage.io._plugins.pil_plugin import ndarray_to_pil
 from threading import Thread
+import gevent
 from bs4 import BeautifulSoup as bs
 from eta import ETA
 import datetime
 import time
-from borb.pdf.canvas.layout.image.image import Image as Image
-from borb.pdf.canvas.layout.page_layout.multi_column_layout import SingleColumnLayout
-from borb.pdf.document.document import Document
-from borb.pdf.page.page import Page
-from borb.pdf.pdf import PDF
-import ocrmypdf
+import subprocess
 
 
 def _make_headers():
@@ -182,7 +178,6 @@ class PHASE1:
             ).split())
                 
             if Path(f'{self.pdf_file_name}.pdf').exists():
-                self.pdf_file_name = str(self.pdf_file_name)
                 n = -1
                 while Path(f'{self.pdf_file_name}{n}.pdf').exists():
                     n -= 1
@@ -199,13 +194,20 @@ class PHASE2:
     - CONVERT TO PIL IMAGE
     """
     class exceptions:
-        NoPagesFound = Exception("No pages found")
+        NoPagesFound     = Exception("No pages found")
+        NoSplitsFound    = Exception("Couldn't find splits for this page")
+        InvalidPageRange = Exception("Given page range is invalid")
+        PageOutOfRange   = Exception("Given page range is out of range")
+        NoPagesFound     = Exception("Failed to find any pages")
+        DuplicatePages   = Exception("Given page range has dubplicate pages")
     
     imgs = {}
     
-    def __init__(self, numberDataRsid, dataRSID, linkPath, pageAmount, IMAGE_UPSCALING):
+    def __init__(self, numberDataRsid, dataRSID, linkPath, pageAmount, IMAGE_UPSCALING, PAGE_RANGE=None, DEBUG=False):
         self.pageAmount:      int  = pageAmount
         self.IMAGE_UPSCALING: bool = IMAGE_UPSCALING
+        self.debug:           bool = DEBUG
+        self.PAGE_RANGE            = self.parse_page_range(PAGE_RANGE) if PAGE_RANGE else range(1, self.pageAmount+1)
 
         # generating possible links
         if numberDataRsid:
@@ -219,24 +221,43 @@ class PHASE2:
         ]
 
 
+    def parse_page_range(self, s):
+        range_num = []
+        for r in s.rstrip(',').split(','):
+            try:
+                r = [int(i) for i in r.split('-')]
+            except ValueError as e:
+                raise self.exceptions.InvalidPageRange from e
+            # error checking
+            if len(r) not in range(1, 3) or min(r) < 1:
+                raise self.exceptions.InvalidPageRange
+            elif max(r) > self.pageAmount:
+                raise self.exceptions.PageOutOfRange
+            n = -1 if r[0] > r[-1] else 1
+            range_num.extend(range(r[0], r[-1]+n, n))
+        # finding duplicates
+        if len(set(range_num)) != len(range_num):
+            raise self.exceptions.DuplicatePages
+        return range_num
+        
+
     def run(self, print_eta=False):
         self.eta = ETA_(self.pageAmount*2)
         if print_eta:
             self.eta._thread_eta()
-        threads = []
-        for page in range(1, self.pageAmount+1):
-            threads.append(Thread(target=self.set_imgs, args=(page,)))
-            threads[-1].daemon = True
-            threads[-1].start()
-
-        for t in threads:
-            t.join()
+        group = gevent.pool.Pool(5)
+        for page in sorted(self.PAGE_RANGE):
+            group.add(gevent.spawn(self.set_imgs, page))
+        group.join()
+        
         self.eta.done()
         
         if not self.imgs:
             raise self.exceptions.NoPagesFound
         
-        self.imgs = [i[1] for i in sorted(self.imgs.items())]
+        self.imgs = [i[1] for i in sorted(
+                self.imgs.items(), key=lambda x: self.PAGE_RANGE.index(x[0])
+            )]
 
 
     def test_sites(self, url_list):
@@ -265,10 +286,10 @@ class PHASE2:
             if blurredPage := self.test_sites(blurredPage):
                 blurredPages.extend(blurredPage)
                 if blurredPage:
-                    break        
+                    break
         
         if not blurredPages:
-            self.eta.tick(msg=f'Failed to stitch page {page}', step=2)
+            self.eta.tick(msg=f'Failed to stitch page #{page}', step=2)
             return
         
         blurredPages = sorted(blurredPages, key=lambda x: self._split_from_link(x))
@@ -280,9 +301,15 @@ class PHASE2:
             fullpageURL = f'{blurredPages[-1][:-4]}-html-bg{blurredPages[-1][-4:]}'
         self.eta.tick(msg=f'Found {len(blurredPages)+1} pieces for page #{page}')
         
-        self.imgs[page] = self.stitch_page(fullpageURL, blurredPages)
-        self.eta.tick(msg=f'Page #{page} complete')
-
+        try:
+            self.imgs[page] = self.stitch_page(fullpageURL, blurredPages)
+        except Exception as e:
+            self.eta.tick(msg=f'Failed to get splits for page #{page}')
+            if self.debug:
+                raise self.exceptions.NoSplitsFound from e
+        else:
+            self.eta.tick(msg=f'Page #{page} complete')
+            
 
     def _pg_num_from_link(self, url):
         return int(re.search('page-\d+', url).group(0)[5:])
@@ -369,42 +396,24 @@ class PHASE3:
     - SAVE FILE AND RUN OCR AS NEEDED
     """
     class exceptions:
-        OCRFailed = Exception('OCR failed. Please make sure Ghostscript and Tesseract-OCR are installed')
+        OCRFailed = Exception('OCR failed. Please make sure OCRmyPDF is installed in PATH, along with its dependencies Ghostscript & Tesseract-OCR')
         
-    doc = Document()
-
     def __init__(self, pdf_file_name, imgs, USE_OCR):
         self.pdf_file_name  = pdf_file_name
         self.use_ocr        = USE_OCR
         self.imgs           = imgs
 
-
-    def run(self):
-        self.make_pdf()
-        self.write_pdf()
-
-
-    def make_pdf(self):
-        for img in self.imgs:
-            # Create/add Page
-            page = Page(img.width + 10, img.height + 10)
-            self.doc.append_page(page)
-
-            # Set PageLayout
-            layout = SingleColumnLayout(page, horizontal_margin=0, vertical_margin=0)
-
-            # Add Image
-            layout.add(Image(img))
-
-
-    def write_pdf(self):
+    def run(self, debug=False):
         # write to disk
         Path(self.pdf_file_name).parent.mkdir(parents=True, exist_ok=True)
-        with open(self.pdf_file_name, "wb") as pdf_file_handle:
-            PDF.dumps(pdf_file_handle, self.doc)
+
+        self.imgs[0].save(self.pdf_file_name, "PDF", resolution=100.0, save_all=True, append_images=self.imgs[1:])
                 
         if self.use_ocr:
             try:
-                ocrmypdf.ocr(self.pdf_file_name, self.pdf_file_name, use_threads=True)
+                cmd_args = ['ocrmypdf'] + (
+                    [] if debug else ['-q']
+                    ) + [self.pdf_file_name, self.pdf_file_name]
+                subprocess.run(cmd_args)
             except FileNotFoundError as e:
                 raise self.exceptions.OCRFailed from e

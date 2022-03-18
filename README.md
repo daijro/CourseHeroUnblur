@@ -9,52 +9,52 @@ Download unblurred CourseHero documents as searchable PDFs
 
 This tool gathers all the avaliable previews of a document in CourseHero, then uses image manipulation to identify and switch together the unblurred parts of each page to recreate the file behind the paywall. These images are then (optionally) upscaled and saved to a OCR-scanned searchable PDF file.
 
-<hr width=50>
 
 ## In Action
 
 https://user-images.githubusercontent.com/72637910/157621460-10ab458a-74f2-4334-9312-c63462742bdb.mp4
 
 
-<hr width=50>
+---
 
 ## Installation
 
 **Tested on [Python 3.8.9](https://www.python.org/downloads/release/python-389/)**
 
-Pip packages:
+#### Pip packages
+
+Install using `requirements.txt`:
 ```
-html5lib
-bs4
-requests-html
-fake-headers
-grequests
-pillow
-opencv-python
-numpy
-colorama
-blessed
-eta
-scikit-image
-borb
-ocrmypdf
+pip install -r requirements.txt
 ```
 
-*Optional for selectable text in PDF:*
+<hr width=50>
 
-- Ghostscript: ([downloads](https://www.ghostscript.com/releases/gsdnld.html))
-- Tesseract-OCR (add to PATH): ([downloads](https://tesseract-ocr.github.io/tessdoc/Home.html#binaries))
+#### Other third-party dependencies
+
+Optional dependenices for selectable text in PDF (*add to PATH*):
+
+- Ghostscript: ([download](https://www.ghostscript.com/releases/gsdnld.html))
+- Tesseract-OCR: ([download](https://tesseract-ocr.github.io/tessdoc/Home.html#binaries))
+
+##### Using Chocolatey
+
+Using [chocolatey](https://chocolatey.org/), you can install these dependencies by running the following command as admin:
+```ps
+choco install ghostscript tesseract-ocr -y
+```
+
 
 ---
 
 ## Usage
 
 
-### CLI
+#### CLI
 
 Command line arguments:
 ```
-usage: CourseHeroUnblur.py [-h] -l URL [-o OUTPUT] [-n] [-s] [--open]
+usage: CourseHeroUnblur.py [-h] -l URL [-o OUTPUT] [-n] [-s] [-p PAGES] [--open] [--debug]
 
 Bypass the coursehero paywall
 
@@ -64,8 +64,11 @@ optional arguments:
   -o OUTPUT, --output OUTPUT
                         Output file (default file name from CourseHero)
   -n, --no-ocr          Don't scan PDF with OCR, won't break without GhostScript and Tesseract
-  -s, --sharpen         Sharpens images for better OCR output (makes images grayscale)
+  -s, --sharpen         Sharpens the image for better OCR output (makes images grayscale)
+  -p PAGES, --pages PAGES
+                        Specify a page range (example: 1,2,3-5)
   --open                Opens the PDF in the default web browser
+  --debug               Show error traceback
 ```
 
 ---
