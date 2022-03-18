@@ -87,6 +87,7 @@ class PHASE1:
         TooManyRequests = Exception("Too many requests have been sent. Please rotate your IP or try again later")
         FailedToParse   = Exception("Failed to parse CourseHero page information")
         PageAmountError = Exception("Could not find the document page amount")
+        InvalidPDFName  = Exception("File name must end in .pdf")
         
         
     def __init__(self, URL, PDF_FILE_NAME=None):
@@ -167,21 +168,27 @@ class PHASE1:
         """
         path = Path(self.pdf_file_name.rstrip('/').rstrip('\\')) if self.pdf_file_name else None
         if self.pdf_file_name and not path.is_dir():
-            # Check if given path is a directory
+            if not str(self.pdf_file_name).lower().endswith('.pdf'):
+                raise self.exceptions.InvalidPDFName
             if path.is_file(): # if file
                 self.pdf_file_name = str(path)
             elif not path.exists(): # if path doesn't exist yet
                 self.pdf_file_name = (Path().cwd() / self.pdf_file_name).absolute()
         else:
-            sluggify = lambda s: '_'.join(re.sub(r'[^\w\d\s]+', '', s).split()) + '.pdf'
-            
+            # If given path is a directory
             dir = path or Path().cwd()
-            self.pdf_file_name = dir / sluggify(self._soup.find('h1', class_='bdp_title_heading').text)
+            self.pdf_file_name = dir / '_'.join(re.sub(r'[^\w\d\s]+', '', 
+                self._soup.find('h1', class_='bdp_title_heading').text
+            ).split())
                 
-            while self.pdf_file_name.exists():
-                self.pdf_file_name = Path(f'{str(self.pdf_file_name)[:-4]}-1{str(self.pdf_file_name)[-4:]}')
-
-            self.pdf_file_name = str(self.pdf_file_name)
+            if Path(f'{self.pdf_file_name}.pdf').exists():
+                self.pdf_file_name = str(self.pdf_file_name)
+                n = -1
+                while Path(f'{self.pdf_file_name}{n}.pdf').exists():
+                    n -= 1
+                self.pdf_file_name = f'{self.pdf_file_name}{n}'
+                    
+            self.pdf_file_name = f'{self.pdf_file_name}.pdf'
 
 
 class PHASE2:
@@ -392,6 +399,7 @@ class PHASE3:
 
     def write_pdf(self):
         # write to disk
+        Path(self.pdf_file_name).parent.mkdir(parents=True, exist_ok=True)
         with open(self.pdf_file_name, "wb") as pdf_file_handle:
             PDF.dumps(pdf_file_handle, self.doc)
                 
