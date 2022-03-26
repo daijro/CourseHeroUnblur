@@ -20,10 +20,9 @@ def _make_headers():
     """
     Returns a dictionary of headers to be used in requests
     """
-    return {
-        key:value for key, value in Headers(headers=True).generate().items()
-        if key != 'Accept-Encoding'
-    }
+    h = dict(Headers(headers=True).generate().items())
+    h['Accept-Encoding'] = 'deflate'
+    return h
 
 
 class ETA_(ETA):
@@ -56,6 +55,7 @@ class ETA_(ETA):
         return super().done()
     
     def get_elapsed(self):
+        now = datetime.datetime.now()
         if not self._started:
             self._started = now
             return 0
@@ -64,12 +64,11 @@ class ETA_(ETA):
             return (td.days * 86400) + td.seconds
         
     def get_remaining(self):            
-        now = datetime.datetime.now()
-        elapsed = self.get_elapsed()
-
-        td = now - self.started
-        elapsed_sec = (td.days * 86400) + td.seconds
-        return self.ave_remaining(self.last_step, elapsed_sec)
+        return (
+            self.ave_remaining(self.last_step, elapsed_sec)
+            if (elapsed_sec := self.get_elapsed())
+            else None
+        )
 
 
 class PHASE1:
