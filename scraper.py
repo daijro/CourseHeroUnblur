@@ -133,7 +133,7 @@ class PHASE1:
         self.numberDataRsid, self.dataRSID, self.linkPath
         """
         try:
-            linkPath = pot_url = re.findall('url\\(\\/doc-asset\\/bg[\\/a-z0-9\\.\\-]+\\);', self._resp.text)[0][4:-2]
+            linkPath = pot_url = re.findall(r'\/doc-asset\/bg\/[a-z0-9\.\-]+\/splits\/\d+\/split\-[a-z0-9\.\-]+\.jpg', self._resp.text)[0]
         except IndexError as e:
             raise self.exceptions.TooManyRequests from e
         except Exception as e:
